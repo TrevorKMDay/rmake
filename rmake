@@ -72,7 +72,11 @@ if [ ${#} -eq 0 ] ; then
 fi
 
 # Give a phony name, in case they run it without a target
-name=$(pwgen 5 1)
+if command -v pwgen ; then
+    name=$(pwgen 5 1) 
+else
+    name=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
+fi
 
 # Find only in one and below; -L traverses symlinks
 subjects=$(find -L . -mindepth 2 -maxdepth 2 -name 'Makefile' | \
@@ -192,12 +196,13 @@ for subj in ${subjects} ; do
 		mkdir -p q{out,err}.${prefix}${subj}.${user}
 
 		qsub ${quit} ${queue} -S /bin/bash <<-EOF
-			#SGE submission options
-			#$ -cwd
-			#$ -V
-			#$ -N ${prefix}${subj}.${name}
-			#$ -o qout.${prefix}${subj}.${user}
-			#$ -e qerr.${prefix}${subj}.${user}
+			#!/bin/bash -l
+
+                        # TODO: paramaterize these
+                        #PBS -l walltime=12:00:00,nodes=1:ppn=8,mem=10gb
+                        # TODO: paramaterize these
+                        #PBS -m abe
+                        #PBS -M ${user}$umn.edu
 
 			make ${subj} TARGET="${MAKETARGET}" ${makeparam}
 		EOF
@@ -206,10 +211,13 @@ for subj in ${subjects} ; do
 
 		# If no output/error directories, submit this way
 		qsub ${quit} ${queue} -S /bin/bash <<-EOF
-			#SGE submission options
-			#$ -cwd
-			#$ -V
-			#$ -N ${prefix}${subj}.${name}
+			#!/bin/bash -l
+
+                        # TODO: paramaterize these
+                        #PBS -l walltime=12:00:00,nodes=1:ppn=8,mem=10gb
+                        # TODO: paramaterize these
+                        #PBS -m abe
+                        #PBS -M ${user}$umn.edu
 
 			make ${subj} TARGET="${MAKETARGET}" ${makeparam}
 		EOF
