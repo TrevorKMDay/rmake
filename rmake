@@ -73,12 +73,15 @@ fi
 
 # Give a phony name, in case they run it without a target
 if command -v pwgen ; then
+    echo "+ Using \`pwgen\` to generate names"
     name=$(pwgen 5 1) 
 else
-    name=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
+    echo "+ Using \`/dev/urandom\` to generate names"
+    name=$(head /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 5 | head -n 1)
 fi
 
 # Find only in one and below; -L traverses symlinks
+# echo "Starting subject id"
 subjects=$(find -L . -mindepth 2 -maxdepth 2 -name 'Makefile' | \
 			sed -e 's|/Makefile||' -e 's|./||')
 
@@ -88,6 +91,15 @@ MAKETARGET=''
 testmake=n
 setdate=n
 queue=
+
+walltime=00:10:00
+walltime_default="<default>"
+nodes=1
+nodes_default="<default>"
+ppn=4
+ppn_default="<default>"
+mem=4
+mem_default="<default>"
 
 while getopts ":abde:hijklmno:pqstvwz:CDHMN:OPQ:S:T:" opt ; do
 
@@ -129,13 +141,13 @@ while getopts ":abde:hijklmno:pqstvwz:CDHMN:OPQ:S:T:" opt ; do
 		O) oedirs=y ;;
 		P) setdate=y
 			date=$(date +%y%m%d-%H-%I) ;;
-		Q) queue="-q ${OPTARG}" ;;
+		Q) queue="${OPTARG}" ;;
 		S) subjects="${OPTARG}"
 			# Sanity check argument to subjects.
 			subjnum=$(echo ${subjects} | wc -w)
 			if [ ${subjnum} -eq 1 ] ; then
 				echo -en "\n!--- Only one argument to -S; ensure your" 	>&2
-				echo -e " argument is quoted. ---!\n" 				 	>&2
+				echo -e " argument is quoted. ---!\n" 			>&2
 			fi ;;
 		T) MAKETARGET="${OPTARG}"
 			name=$(echo ${OPTARG} | sed -e 's/[[:space:]]/,/g' -e 's|/|-|g' ) ;;
@@ -163,18 +175,32 @@ fi
 
 # Conform whitespace; who knows what you're gonna get.
 subjects=$(echo ${subjects} | tr '\n' ' ' | sed -e 's/[[:space:]]+/ /g')
+echo 
 echo "Subjects: ${subjects}"
-
-# Wait until here to echo make flags so we get them all.
-if [[ ${testmake} == y ]] ; then
-	echo make "<subj> TARGET=\"${MAKETARGET}\" ${makeparam}"
-	exit 0
-fi
 
 # Add the date to the job name if requested
 if [[ ${setdate} == y ]] ; then
 	name=${name}.${date}
 fi
+
+# Update on parameter check (always to ensure PBS config is correct)
+echo
+echo "Running with parameters:"
+echo " | n subjects = $(echo ${subjects} | wc -w)"
+echo " | PBS submission:"
+echo "   + QUEUE:       ${queue}"
+echo "   + Walltime:    ${walltime} ${walltime_default}"
+echo "   + Nodes req'd: ${nodes} ${nodes_default}"
+echo "   + PPN req'd:   ${ppn} ${ppn_default}" 
+echo "   + Mem. req'd:  ${mem}gb ${mem_default}"
+
+
+# Wait until here to echo make flags so we get them all.
+if [[ ${testmake} == y ]] ; then
+    echo
+    echo "make --directory=<subj> TARGET=\"${MAKETARGET}\" ${makeparam}"
+    exit 0
+fi 
 
 # Submit subjects individually to SGE
 for subj in ${subjects} ; do
@@ -195,7 +221,7 @@ for subj in ${subjects} ; do
 		# option to the qsub command
 		mkdir -p q{out,err}.${prefix}${subj}.${user}
 
-		qsub ${quit} ${queue} -S /bin/bash <<-EOF
+		#qsub ${quit} ${queue} -S /bin/bash <<-EOF
 			#!/bin/bash -l
 
                         # TODO: paramaterize these
@@ -204,22 +230,27 @@ for subj in ${subjects} ; do
                         #PBS -m abe
                         #PBS -M ${user}$umn.edu
 
-			make ${subj} TARGET="${MAKETARGET}" ${makeparam}
-		EOF
+			#make ${subj} TARGET="${MAKETARGET}" ${makeparam}
+		#EOF
+
+		echo "Cannot currently create out/err dirs"
 
 	else
 
 		# If no output/error directories, submit this way
-		qsub ${quit} ${queue} -S /bin/bash <<-EOF
+		qsub -q ${queue} -V -d $(pwd) <<-EOF
 			#!/bin/bash -l
 
                         # TODO: paramaterize these
-                        #PBS -l walltime=12:00:00,nodes=1:ppn=8,mem=10gb
+                        #PBS -l walltime=00:05:00,nodes=1:ppn=2,mem=5gb
                         # TODO: paramaterize these
                         #PBS -m abe
                         #PBS -M ${user}$umn.edu
 
-			make ${subj} TARGET="${MAKETARGET}" ${makeparam}
+			make \
+                            --directory=${subj} \
+                            TARGET="${MAKETARGET}" \
+                            ${makeparam}
 		EOF
 
 	fi
